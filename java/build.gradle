@@ -28,6 +28,8 @@ plugins {
 group = 'dev.babbaj'
 version = '1.6'
 
+def isJitPackBuild = "true".equalsIgnoreCase(System.getenv('JITPACK'))
+
 java {
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(8))
@@ -44,6 +46,7 @@ shadowJar {
 }
 
 tasks.register('buildNatives', Exec) {
+    onlyIf { !isJitPackBuild }
     outputs.dir(temporaryDir)
     workingDir temporaryDir
     def scriptPath = new File(getProjectDir(), "multiplat_build.sh").absolutePath.toString()

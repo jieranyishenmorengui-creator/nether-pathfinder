@@ -30,5 +30,6 @@ do_build $1 aarch64-linux-gnu libnether_pathfinder-aarch64.so
 # zig 0.11.0 requires macos-none
 do_build $1 x86_64-macos-none libnether_pathfinder-x86_64.dylib
 do_build $1 aarch64-macos-none libnether_pathfinder-aarch64.dylib
+do_build $1 i686-windows-gnu nether_pathfinder-x86.dll
 do_build $1 x86_64-windows-gnu nether_pathfinder-x86_64.dll
 do_build $1 aarch64-windows-gnu nether_pathfinder-aarch64.dll

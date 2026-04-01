@@ -47,7 +47,19 @@ shadowJar {
 tasks.register('buildNatives', Exec) {
     outputs.dir(temporaryDir)
     workingDir temporaryDir
-    commandLine new File(getProjectDir(), "multiplat_build.sh").absolutePath.toString(), getProjectDir().absolutePath.toString()
+    def scriptPath = new File(getProjectDir(), "multiplat_build.sh").absolutePath.toString()
+    def projectPath = getProjectDir().absolutePath.toString()
+    def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+    if (isWindows) {
+        def bashFromPath = "bash"
+        def gitBash = new File('C:/Program Files/Git/bin/bash.exe')
+        if (gitBash.exists()) {
+            bashFromPath = gitBash.absolutePath
+        }
+        commandLine bashFromPath, scriptPath, projectPath
+    } else {
+        commandLine scriptPath, projectPath
+    }
 }
 
 abstract class ZipFilesNoCompress extends DefaultTask {
@@ -62,14 +74,22 @@ abstract class ZipFilesNoCompress extends DefaultTask {
 
     @TaskAction
     def run() {
-        try (FileOutputStream fos = new FileOutputStream(output)
-             ZipOutputStream zos = new ZipOutputStream(fos)
-        ) {
+        FileOutputStream fos = null
+        ZipOutputStream zos = null
+        try {
+            fos = new FileOutputStream(output)
+            zos = new ZipOutputStream(fos)
             zos.setLevel(Deflater.NO_COMPRESSION)
             inputFiles.forEach {
                 zos.putNextEntry(new ZipEntry(it.getName()))
                 zos.write(Files.readAllBytes(it.toPath()))
                 zos.closeEntry()
+            }
+        } finally {
+            if (zos != null) {
+                zos.close()
+            } else if (fos != null) {
+                fos.close()
             }
         }
     }
@@ -87,10 +107,19 @@ abstract class XZCompress extends DefaultTask {
 
     @TaskAction
     def run() {
-        try (FileOutputStream fos = new FileOutputStream(output);
-             XZOutputStream xz = new XZOutputStream(fos, new FilterOptions[] {new X86Options(), new LZMA2Options()})
-        ) {
+        FileOutputStream fos = null
+        XZOutputStream xz = null
+        try {
+            fos = new FileOutputStream(output)
+            FilterOptions[] filters = [new X86Options(), new LZMA2Options()] as FilterOptions[]
+            xz = new XZOutputStream(fos, filters)
             xz.write(Files.readAllBytes(input.toPath()))
+        } finally {
+            if (xz != null) {
+                xz.close()
+            } else if (fos != null) {
+                fos.close()
+            }
         }
     }
 }

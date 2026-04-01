@@ -8,6 +8,8 @@ The native shared library can be built like a typical cmake project but requires
 
 The full java library with native code can be built by the gradle project in the `java` subdirectory and uses `zig cc` to build the native code (zig 0.9.1 is known to work).
 
+Windows native artifacts now include 32-bit (`nether_pathfinder-x86.dll`) in addition to 64-bit builds.
+
 # Performance
 On my Ryzen 5900x in Linux it pathfinds around 25,000 blocks/second.
 

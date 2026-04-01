@@ -88,11 +88,6 @@ public class NetherPathfinder {
     }
 
     private static String getNativeLibName() {
-        final int bits = Integer.parseInt(System.getProperty("sun.arch.data.model"));
-        if (bits != 64) {
-            throw new UnsupportedOperationException("Unsupported architecture (64-bit required)");
-        }
-
         final String osName = System.getProperty("os.name").toLowerCase();
         final String osArch = System.getProperty("os.arch").toLowerCase();
 
@@ -101,6 +96,8 @@ public class NetherPathfinder {
             arch = "aarch64";
         } else if (osArch.equals("x86_64") || osArch.equals("amd64")) {
             arch = "x86_64";
+        } else if (osArch.equals("x86") || osArch.equals("i386") || osArch.equals("i486") || osArch.equals("i586") || osArch.equals("i686")) {
+            arch = "x86";
         } else {
             throw new UnsupportedOperationException("Unsupported architecture: " + osArch);
         }

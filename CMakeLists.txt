@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(nether_pathfinder)
 
+option(PATHFINDER_WIN7_COMPAT "Build with Windows 7 API target (0x0601)" ON)
+
 find_package(JNI COMPONENTS JNI_INCLUDE_DIRS)
 include_directories(${JNI_INCLUDE_DIRS})
 
@@ -16,7 +18,7 @@ set(ZLIB_ENABLE_TESTS False)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory(zlib-ng)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 message("${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
@@ -40,6 +42,11 @@ else()
 endif()
 target_include_directories(nether_pathfinder PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/zlib-ng)
 target_link_libraries(nether_pathfinder PRIVATE zlibstatic)
+target_compile_features(nether_pathfinder PRIVATE cxx_std_20)
+
+if (WIN32 AND PATHFINDER_WIN7_COMPAT)
+    target_compile_definitions(nether_pathfinder PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     message(WARNING "gcc is not recommended")

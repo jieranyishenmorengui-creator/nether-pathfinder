@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <bit>
+#include <cstdint>
 
 #include <jni.h>
 
@@ -22,7 +23,17 @@ void makeReadOnly(void* ptr, size_t len) {
 }
 #endif
 
-static_assert(sizeof(jlong) == sizeof(void*)); // 32 bit btfo
+static_assert(sizeof(jlong) >= sizeof(void*));
+
+template <typename T>
+inline T* fromHandle(jlong handle) {
+    return reinterpret_cast<T*>(static_cast<intptr_t>(handle));
+}
+
+template <typename T>
+inline jlong toHandle(T* ptr) {
+    return static_cast<jlong>(reinterpret_cast<intptr_t>(ptr));
+}
 
 constexpr jint NUM_X_BITS = 26;//1 + MathHelper.log2(MathHelper.smallestEncompassingPowerOfTwo(30000000));
 constexpr jint NUM_Z_BITS = NUM_X_BITS;
@@ -102,15 +113,15 @@ extern "C" {
         }
     }
 
-    EXPORT Context* JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_newContext(JNIEnv* env, jclass, jlong seed, jstring baritoneCacheDir, jint dimension, jint maxHeight, jboolean pageAllocator) {
+    EXPORT jlong JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_newContext(JNIEnv* env, jclass, jlong seed, jstring baritoneCacheDir, jint dimension, jint maxHeight, jboolean pageAllocator) {
         auto dim = static_cast<Dimension>(dimension);
         if (dimension < 0 || dimension > 2) {
             throwException(env, "Invalid dimension");
-            return nullptr;
+            return 0;
         }
         if (maxHeight <= 0 || maxHeight > 384) {
             throwException(env, "Invalid max height (must be between 0 and 384)");
-            return nullptr;
+            return 0;
         }
 
         Context* ctx;
@@ -124,14 +135,16 @@ extern "C" {
         } else {
             ctx = new Context{seed, dim, maxHeight, static_cast<bool>(pageAllocator)};
         }
-        return ctx;
+        return toHandle(ctx);
     }
 
-    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_freeContext(JNIEnv* env, jclass, Context* ctx) {
+    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_freeContext(JNIEnv* env, jclass, jlong ctxHandle) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         delete ctx;
     }
 
-    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_insertChunkData(JNIEnv* env, jclass, Context* ctx, jint chunkX, jint chunkZ, jbooleanArray input) {
+    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_insertChunkData(JNIEnv* env, jclass, jlong ctxHandle, jint chunkX, jint chunkZ, jbooleanArray input) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         jboolean isCopy{};
         const auto blocksInChunk = 16 * 16 * dimensionHeight(ctx->dimension);
         if (auto len = env->GetArrayLength(input); len != blocksInChunk) {
@@ -151,7 +164,8 @@ extern "C" {
         ctx->chunkCache.insert_or_assign(ChunkPos{chunkX, chunkZ}, std::pair{ChunkState::FROM_JAVA, chunk_ptr});
     }
 
-    EXPORT Chunk* JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_allocateAndInsertChunk(JNIEnv*, jclass, Context* ctx, jint x, jint z) {
+    EXPORT jlong JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_allocateAndInsertChunk(JNIEnv*, jclass, jlong ctxHandle, jint x, jint z) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         Chunk* chunk = ctx->chunkAllocator->allocate();
         auto p = std::pair{ChunkState::FROM_JAVA, chunk};
         auto existing = ctx->chunkCache.find(ChunkPos{x, z});
@@ -161,28 +175,31 @@ extern "C" {
         } else {
             ctx->chunkCache.emplace(ChunkPos{x, z}, p);
         }
-        return chunk;
+        return toHandle(chunk);
     }
 
-    EXPORT Chunk* JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_getChunkOrDefault(JNIEnv*, jclass, Context* ctx, jint x, jint z, jboolean solid) {
+    EXPORT jlong JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_getChunkOrDefault(JNIEnv*, jclass, jlong ctxHandle, jint x, jint z, jboolean solid) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         auto existing = ctx->chunkCache.find(ChunkPos{x, z});
         if (existing != ctx->chunkCache.end()) {
-            return existing->second.second;
+            return toHandle(existing->second.second);
         } else {
-            return const_cast<Chunk*>(solid ? &SOLID_CHUNK : &AIR_CHUNK);
+            return toHandle(const_cast<Chunk*>(solid ? &SOLID_CHUNK : &AIR_CHUNK));
         }
     }
 
-    EXPORT Chunk* JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_getChunk(JNIEnv*, jclass, Context* ctx, jint x, jint z) {
+    EXPORT jlong JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_getChunk(JNIEnv*, jclass, jlong ctxHandle, jint x, jint z) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         auto existing = ctx->chunkCache.find(ChunkPos{x, z});
         if (existing != ctx->chunkCache.end()) {
-            return existing->second.second;
+            return toHandle(existing->second.second);
         } else {
-            return nullptr;
+            return 0;
         }
     }
 
-    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_setChunkState(JNIEnv* env, jclass clazz, Context* ctx, jint x, jint z, jboolean fromJava) {
+    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_setChunkState(JNIEnv* env, jclass clazz, jlong ctxHandle, jint x, jint z, jboolean fromJava) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         auto it = ctx->chunkCache.find(ChunkPos{x, z});
         if (it != ctx->chunkCache.end()) {
             it->second.first = fromJava ? ChunkState::FROM_JAVA : ChunkState::FAKE;
@@ -192,7 +209,8 @@ extern "C" {
     }
 
 
-    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_hasChunkFromJava(JNIEnv*, jclass, Context* ctx, jint x, jint z) {
+    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_hasChunkFromJava(JNIEnv*, jclass, jlong ctxHandle, jint x, jint z) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         auto existing = ctx->chunkCache.find(ChunkPos{x, z});
         if (existing != ctx->chunkCache.end()) {
             return existing->second.first == ChunkState::FROM_JAVA;
@@ -201,7 +219,8 @@ extern "C" {
         }
     }
 
-    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_cullFarChunks(JNIEnv*, jclass, Context* ctx, jint chunkX, jint chunkZ, jint maxDistanceBlocks) {
+    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_cullFarChunks(JNIEnv*, jclass, jlong ctxHandle, jint chunkX, jint chunkZ, jint maxDistanceBlocks) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         const auto distSqBlocks = (maxDistanceBlocks / 16) * (maxDistanceBlocks / 16);
         const auto distSq = distSqBlocks;
         std::erase_if(ctx->chunkCache, [=](const auto& item) {
@@ -212,7 +231,8 @@ extern "C" {
         });
     }
 
-    EXPORT jobject JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_pathFind(JNIEnv* env, jclass, Context* ctx, jint x1, jint y1, jint z1, jint x2, jint y2, jint z2, jboolean x4Min, jboolean refineResult, jint timeoutMs, jboolean airIfFake, jdouble fakeChunkCost) {
+    EXPORT jobject JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_pathFind(JNIEnv* env, jclass, jlong ctxHandle, jint x1, jint y1, jint z1, jint x2, jint y2, jint z2, jboolean x4Min, jboolean refineResult, jint timeoutMs, jboolean airIfFake, jdouble fakeChunkCost) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         if (!inBounds(y1) || !inBounds(y2)) {
             throwException(env, "Invalid y1 or y2");
             return nullptr;
@@ -247,7 +267,8 @@ extern "C" {
         return object;
     }
 
-    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_cancel(JNIEnv* env, jclass clazz, Context* ctx) {
+    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_cancel(JNIEnv* env, jclass clazz, jlong ctxHandle) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         return ctx->cancelFlag.test_and_set();
     }
     
@@ -256,7 +277,8 @@ extern "C" {
         throwException(env, "fakeChunkMode must be 0 (Generate), 1 (Air), or 2 (Solid)"); \
         return return_val;                       \
     }
-    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_raytrace0(JNIEnv* env, jclass, Context* ctx, jint fakeChunkModeIn, jint inputs, jdoubleArray startArr, jdoubleArray endArr, jbooleanArray hitsOut, jdoubleArray hitPosOut) {
+    EXPORT void JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_raytrace0(JNIEnv* env, jclass, jlong ctxHandle, jint fakeChunkModeIn, jint inputs, jdoubleArray startArr, jdoubleArray endArr, jbooleanArray hitsOut, jdoubleArray hitPosOut) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         CHECK_FAKE_CHUNK_ARG(fakeChunkModeIn,)
         jboolean isCopy{};
         jdouble* startPtr = env->GetDoubleArrayElements(startArr, &isCopy);
@@ -285,7 +307,8 @@ extern "C" {
         }
     }
 
-    EXPORT jint JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_isVisibleMulti0(JNIEnv* env, jclass, Context* ctx, jint fakeChunkModeIn, jint inputs, jdoubleArray startArr, jdoubleArray endArr, jboolean modeAny) {
+    EXPORT jint JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_isVisibleMulti0(JNIEnv* env, jclass, jlong ctxHandle, jint fakeChunkModeIn, jint inputs, jdoubleArray startArr, jdoubleArray endArr, jboolean modeAny) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         CHECK_FAKE_CHUNK_ARG(fakeChunkModeIn, 0)
         jboolean isCopy{};
         jdouble* startPtr = env->GetDoubleArrayElements(startArr, &isCopy);
@@ -312,13 +335,14 @@ extern "C" {
         return out;
     }
 
-    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_isVisible(JNIEnv* env, jclass, Context* ctx, jint fakeChunkModeIn, jdouble x1, jdouble y1, jdouble z1, jdouble x2, jdouble y2, jdouble z2) {
+    EXPORT jboolean JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_isVisible(JNIEnv* env, jclass, jlong ctxHandle, jint fakeChunkModeIn, jdouble x1, jdouble y1, jdouble z1, jdouble x2, jdouble y2, jdouble z2) {
+        Context* ctx = fromHandle<Context>(ctxHandle);
         CHECK_FAKE_CHUNK_ARG(fakeChunkModeIn, false)
         const std::variant result = raytrace(*ctx, {x1, y1, z1}, {x2, y2, z2}, static_cast<FakeChunkMode>(fakeChunkModeIn));
         return !std::holds_alternative<Hit>(result);
     }
 
     EXPORT jlong JNICALL Java_dev_babbaj_pathfinder_NetherPathfinder_getX2Index(JNIEnv*, jclass) {
-        return (jlong) &X2_INDEX;
+        return toHandle(&X2_INDEX);
     }
 }

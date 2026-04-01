@@ -10,6 +10,9 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 buildscript {
+    repositories {
+        mavenCentral()
+    }
     dependencies {
         classpath 'org.tukaani:xz:1.9'
         classpath 'com.guardsquare:proguard-gradle:7.3.2'
@@ -32,13 +35,8 @@ java {
     withSourcesJar()
 }
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     implementation 'org.tukaani:xz:1.9'
-    implementation 'com.github.jieranyishenmorengui-creator:nether-pathfinder:-SNAPSHOT'
 }
 
 shadowJar {

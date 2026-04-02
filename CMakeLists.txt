@@ -46,6 +46,14 @@ target_compile_features(nether_pathfinder PRIVATE cxx_std_20)
 
 if (WIN32 AND PATHFINDER_WIN7_COMPAT)
     target_compile_definitions(nether_pathfinder PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
+    if (TARGET zlibstatic)
+        target_compile_definitions(zlibstatic PRIVATE WINVER=0x0601 _WIN32_WINNT=0x0601)
+    endif()
+endif()
+
+if (WIN32 AND MINGW)
+    # Improve runtime compatibility on older Windows by avoiding external libstdc++/libgcc DLL requirements.
+    target_link_options(nether_pathfinder PRIVATE "-static-libgcc" "-static-libstdc++")
 endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -56,7 +64,6 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     endif()
 endif()
 
-#target_link_options(nether_pathfinder PRIVATE "-static-libgcc" "-static-libstdc++")
 if (USE_ABSEIL)
     add_subdirectory(abseil-cpp)
     target_link_libraries(nether_pathfinder absl::flat_hash_map)

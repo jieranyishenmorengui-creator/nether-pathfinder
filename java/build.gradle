@@ -1,9 +1,3 @@
-import org.tukaani.xz.FilterOptions
-import org.tukaani.xz.LZMA2Options
-import org.tukaani.xz.X86Options
-import org.tukaani.xz.XZOutputStream
-import proguard.gradle.ProGuardTask
-
 import java.nio.file.Files
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
@@ -64,25 +58,29 @@ tasks.register('buildNatives', Exec) {
     }
 }
 
-abstract class ZipFilesNoCompress extends DefaultTask {
+def joinNativesOutput = layout.buildDirectory.file('tmp/joinNatives/output.zip')
+def compressNativesOutput = layout.buildDirectory.file('tmp/compressNatives/output.zip.xz')
 
-    @InputFiles
-    FileCollection inputFiles
+tasks.register('joinNatives') {
+    dependsOn tasks.named('buildNatives')
+    outputs.file(joinNativesOutput)
+    doLast {
+        def output = joinNativesOutput.get().asFile
+        output.parentFile.mkdirs()
 
-    @OutputFile
-    File getOutput() {
-        return new File(temporaryDir, "output.zip")
-    }
+        def nativeFiles = fileTree(tasks.named('buildNatives').get().temporaryDir).matching {
+            include '*.dll'
+            include '*.so'
+            include '*.dylib'
+        }.files
 
-    @TaskAction
-    def run() {
         FileOutputStream fos = null
         ZipOutputStream zos = null
         try {
             fos = new FileOutputStream(output)
             zos = new ZipOutputStream(fos)
             zos.setLevel(Deflater.NO_COMPRESSION)
-            inputFiles.forEach {
+            nativeFiles.each {
                 zos.putNextEntry(new ZipEntry(it.getName()))
                 zos.write(Files.readAllBytes(it.toPath()))
                 zos.closeEntry()
@@ -97,24 +95,29 @@ abstract class ZipFilesNoCompress extends DefaultTask {
     }
 }
 
-abstract class XZCompress extends DefaultTask {
+tasks.register('compressNatives') {
+    dependsOn tasks.named('joinNatives')
+    inputs.file(joinNativesOutput)
+    outputs.file(compressNativesOutput)
+    doLast {
+        def input = joinNativesOutput.get().asFile
+        def output = compressNativesOutput.get().asFile
+        output.parentFile.mkdirs()
 
-    @InputFile
-    File input
+        def filterOptionsClass = buildscript.classLoader.loadClass('org.tukaani.xz.FilterOptions')
+        def x86OptionsClass = buildscript.classLoader.loadClass('org.tukaani.xz.X86Options')
+        def lzma2OptionsClass = buildscript.classLoader.loadClass('org.tukaani.xz.LZMA2Options')
+        def xzOutputStreamClass = buildscript.classLoader.loadClass('org.tukaani.xz.XZOutputStream')
 
-    @OutputFile
-    File getOutput() {
-        return new File(temporaryDir, "output.zip.xz")
-    }
+        def filters = java.lang.reflect.Array.newInstance(filterOptionsClass, 2)
+        java.lang.reflect.Array.set(filters, 0, x86OptionsClass.getDeclaredConstructor().newInstance())
+        java.lang.reflect.Array.set(filters, 1, lzma2OptionsClass.getDeclaredConstructor().newInstance())
 
-    @TaskAction
-    def run() {
         FileOutputStream fos = null
-        XZOutputStream xz = null
+        def xz = null
         try {
             fos = new FileOutputStream(output)
-            FilterOptions[] filters = [new X86Options(), new LZMA2Options()] as FilterOptions[]
-            xz = new XZOutputStream(fos, filters)
+            xz = xzOutputStreamClass.getConstructor(java.io.OutputStream, filters.getClass()).newInstance(fos, filters)
             xz.write(Files.readAllBytes(input.toPath()))
         } finally {
             if (xz != null) {
@@ -126,29 +129,17 @@ abstract class XZCompress extends DefaultTask {
     }
 }
 
-tasks.register('joinNatives', ZipFilesNoCompress) {
-    dependsOn buildNatives
-    inputFiles = fileTree(tasks.buildNatives.temporaryDir).matching {
-        include '*.dll'
-        include '*.so'
-        include '*.dylib'
-    }
-}
-
-tasks.register('compressNatives', XZCompress) {
-    dependsOn joinNatives
-    input = tasks.joinNatives.output
-}
-
 tasks.shadowJar.configure {
-    dependsOn compressNatives
+    dependsOn tasks.named('compressNatives')
     into('') {
-        from compressNatives.output
+        from(compressNativesOutput)
         rename { 'natives.zip.xz' }
     }
 }
 
-tasks.register('proguard', ProGuardTask) {
+def proguardTaskType = buildscript.classLoader.loadClass('proguard.gradle.ProGuardTask')
+
+tasks.register('proguard', proguardTaskType) {
     dependsOn shadowJar
 
     injars tasks.shadowJar.outputs.files
@@ -172,8 +163,8 @@ tasks.register('proguard', ProGuardTask) {
 }
 
 tasks.register('proguardJar', Jar) {
-    dependsOn proguard
-    from(zipTree(tasks.proguard.outJarFiles[0]))
+    dependsOn tasks.named('proguard')
+    from({ zipTree(tasks.named('proguard').get().outJarFiles[0]) })
     archiveClassifier = 'proguard'
     destinationDirectory = new File(buildDir, 'libs')
 }
